@@ -136,7 +136,7 @@ class LicenseGate extends StatefulWidget {
 
 class _LicenseGateState extends State<LicenseGate> {
   static const String _scriptUrl =
-      'url here';
+      'https://script.google.com/macros/s/AKfycbwB1h4747FDAP1AjwS8S8PMgqlKQHW0wWefoQqplR28LA8LiJjEKIPnlBgyD8MBmOLf0g/exec';
 
   bool _checking = true;
   bool _activated = false;
@@ -504,11 +504,13 @@ class Customer {
 }
 
 DateTime _parseDate(String raw) {
-  final parts = raw.trim().split('/');
+  // Handle both dd/mm/yyyy and dd-mm-yyyy formats
+  final normalized = raw.trim().replaceAll('-', '/');
+  final parts = normalized.split('/');
   return DateTime(
-    int.parse(parts[2]),
-    int.parse(parts[1]),
-    int.parse(parts[0]),
+    int.parse(parts[2].trim()),
+    int.parse(parts[1].trim()),
+    int.parse(parts[0].trim()),
   );
 }
 
@@ -569,6 +571,110 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadCustomers();
+    _checkForUpdate();
+  }
+
+  Future<void> _checkForUpdate() async {
+    const currentVersion = '1.0.0';
+    const versionUrl =
+        'https://script.google.com/macros/s/AKfycbwB1h4747FDAP1AjwS8S8PMgqlKQHW0wWefoQqplR28LA8LiJjEKIPnlBgyD8MBmOLf0g/exec?action=checkUpdate&version=$currentVersion';
+    try {
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 10);
+      final request = await client.getUrl(Uri.parse(versionUrl));
+      request.followRedirects = true;
+      request.maxRedirects = 10;
+      final response = await request.close();
+      final body = await response.transform(utf8.decoder).join();
+      client.close();
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(body);
+        if (data['updateAvailable'] == true && mounted) {
+          _showUpdateDialog(
+            data['version'] ?? '',
+            data['apkUrl'] ?? '',
+            data['message'] ?? 'A new version is available.',
+          );
+        }
+      }
+    } catch (_) {
+      // Silently fail — update check should never crash the app
+    }
+  }
+
+  void _showUpdateDialog(String version, String apkUrl, String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.system_update,
+                  color: AppColors.primary, size: 24),
+            ),
+            const SizedBox(width: 12),
+            const Text('Update Available',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.cardGreen,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text('Version $version',
+                  style: const TextStyle(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13)),
+            ),
+            const SizedBox(height: 12),
+            Text(message,
+                style:
+                    const TextStyle(fontSize: 14, color: AppColors.textDark)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Later',
+                style: TextStyle(color: AppColors.textGrey)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.pop(context);
+              final uri = Uri.parse(apkUrl);
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri,
+                    mode: LaunchMode.externalApplication);
+              }
+            },
+            icon: const Icon(Icons.download, size: 16),
+            label: const Text('Download Now'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _loadCustomers() async {
@@ -675,12 +781,14 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
       final startIndex =
-          rows[0][0].toString().toLowerCase().contains('name') ? 1 : 0;
+          rows[0][0].toString().toLowerCase().trim().contains('name') ? 1 : 0;
       int imported = 0;
       int failed = 0;
       for (int i = startIndex; i < rows.length; i++) {
         try {
           final row = rows[i];
+          // Skip empty rows
+          if (row.isEmpty || row[0].toString().trim().isEmpty) continue;
           if (row.length < 6) continue;
           final customer = Customer(
             name: row[0].toString().trim(),
@@ -738,14 +846,22 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       final buffer = StringBuffer();
+
+      // Header row
       buffer.writeln('name,consumer_number,address,phone,purchase_date,renewal_date,due');
+
+      // Data rows
       for (final c in _customers) {
-        String escape(String s) => '"${s.replaceAll('"', '""')}"';
+        // Wrap text fields in quotes
+        String escapeText(String s) => '"${s.replaceAll('"', '""')}"';
+        // Force Excel to treat numbers as text using ="value" format
+        String forceText(String s) => '="$s"';
+
         buffer.writeln(
-          '${escape(c.name)},'
-          '${escape(c.consumerNumber)},'
-          '${escape(c.address)},'
-          '${escape(c.phone)},'
+          '${escapeText(c.name)},'
+          '${forceText(c.consumerNumber)},'
+          '${escapeText(c.address)},'
+          '${forceText(c.phone)},'
           '${_formatDate(c.purchaseDate)},'
           '${_formatDate(c.renewalDate)},'
           '${c.due.toStringAsFixed(2)}',
@@ -767,7 +883,7 @@ class _HomeScreenState extends State<HomeScreen> {
           'customers_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}.csv';
 
       final file = File('${dir!.path}/$fileName');
-      await file.writeAsString(buffer.toString());
+      await file.writeAsString(buffer.toString(), encoding: utf8);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1018,7 +1134,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     context,
                                     MaterialPageRoute(
                                       builder: (_) =>
-                                          AddCustomerScreen(existing: c),
+                                          AddCustomerScreen(existing: c, allCustomers: _customers),
                                     ),
                                   );
                                   if (updated != null) {
@@ -1074,7 +1190,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         context,
                                         MaterialPageRoute(
                                           builder: (_) => AddCustomerScreen(
-                                              existing: filtered[i]),
+                                              existing: filtered[i], allCustomers: _customers),
                                         ),
                                       );
                                       if (updated != null) {
@@ -1107,7 +1223,7 @@ class _HomeScreenState extends State<HomeScreen> {
         onPressed: () async {
           final customer = await Navigator.push<Customer>(
             context,
-            MaterialPageRoute(builder: (_) => const AddCustomerScreen()),
+            MaterialPageRoute(builder: (_) => AddCustomerScreen(allCustomers: _customers)),
           );
           if (customer != null) _addCustomer(customer);
         },
@@ -1582,7 +1698,7 @@ class _UpcomingRenewalsScreenState extends State<UpcomingRenewalsScreen> {
                         size: 16,
                       ),
                       label: Text(
-                        isSent ? 'Reminder Sent' : 'Send Reminder',
+                        isSent ? 'रिमाइंडर भेजा गया ✓' : 'रिन्यूअल रिमाइंडर भेजें',
                         style: const TextStyle(fontSize: 13),
                       ),
                       style: ElevatedButton.styleFrom(
@@ -2424,7 +2540,8 @@ class _DetailTile extends StatelessWidget {
 
 class AddCustomerScreen extends StatefulWidget {
   final Customer? existing;
-  const AddCustomerScreen({super.key, this.existing});
+  final List<Customer> allCustomers;
+  const AddCustomerScreen({super.key, this.existing, required this.allCustomers});
 
   @override
   State<AddCustomerScreen> createState() => _AddCustomerScreenState();
@@ -2521,12 +2638,12 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
         padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
           child: Column(
             children: [
               _buildCard([
                 _buildField(_nameController, 'Customer Name', Icons.person),
-                _buildField(_consumerNumberController, 'Consumer Number',
-                    Icons.numbers),
+                _buildConsumerNumberField(),
                 _buildPhoneField(),
                 _buildField(_addressController, 'Address', Icons.location_on,
                     maxLines: 2),
@@ -2589,6 +2706,31 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     );
   }
 
+  Widget _buildConsumerNumberField() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: TextFormField(
+        controller: _consumerNumberController,
+        decoration: const InputDecoration(
+          labelText: 'Consumer Number',
+          prefixIcon: Icon(Icons.numbers, color: AppColors.primary),
+          border: InputBorder.none,
+        ),
+        validator: (v) {
+          if (v == null || v.trim().isEmpty) return 'Consumer number is required';
+          // Check for duplicates — skip if editing same customer
+          final isDuplicate = widget.allCustomers.any((c) =>
+              c.consumerNumber.toLowerCase() == v.trim().toLowerCase() &&
+              c.consumerNumber != widget.existing?.consumerNumber);
+          if (isDuplicate) {
+            return '⚠️ Consumer number already exists';
+          }
+          return null;
+        },
+      ),
+    );
+  }
+
   Widget _buildPhoneField() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -2596,7 +2738,6 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
         controller: _phoneController,
         keyboardType: TextInputType.phone,
         maxLength: 10,
-        autovalidateMode: AutovalidateMode.onUserInteraction,
         decoration: const InputDecoration(
           labelText: 'Phone Number',
           prefixIcon: Icon(Icons.phone, color: AppColors.primary),
