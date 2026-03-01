@@ -66,7 +66,7 @@ flutter:
   # the material Icons class.
   uses-material-design: true
   assets:
-    - assets/icon/icon.jpeg
+    - assets/icon/icon.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:
@@ -101,5 +101,5 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/icon/icon.jpeg"
+  image_path: "assets/icon/icon.png"
   min_sdk_android: 21
