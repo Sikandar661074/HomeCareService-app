@@ -136,7 +136,7 @@ class LicenseGate extends StatefulWidget {
 
 class _LicenseGateState extends State<LicenseGate> {
   static const String _scriptUrl =
-      'Script_url_here'; // TODO: Replace with your actual script URL
+      'URL_HIDDEN_FOR_PRIVACY'; // Replace with your Google Apps Script URL
 
   bool _checking = true;
   bool _activated = false;
@@ -150,10 +150,69 @@ class _LicenseGateState extends State<LicenseGate> {
   Future<void> _checkActivation() async {
     final prefs = await SharedPreferences.getInstance();
     final activated = prefs.getBool('license_activated') ?? false;
-    setState(() {
-      _activated = activated;
-      _checking = false;
-    });
+
+    // Not activated locally — show activation screen
+    if (!activated) {
+      setState(() {
+        _activated = false;
+        _checking = false;
+      });
+      return;
+    }
+
+    // Already activated — re-validate against Google Sheet
+    final key = prefs.getString('license_key') ?? '';
+    try {
+      final url =
+          '$_scriptUrl?action=validate&key=${Uri.encodeComponent(key)}';
+
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 10);
+      final request = await client.getUrl(Uri.parse(url));
+      request.followRedirects = true;
+      request.maxRedirects = 10;
+      final response = await request.close();
+      final responseBody = await response.transform(utf8.decoder).join();
+      client.close();
+
+      if (response.statusCode == 200) {
+        final body = jsonDecode(responseBody);
+        if (body['valid'] == true) {
+          // Still valid — let them in
+          setState(() {
+            _activated = true;
+            _checking = false;
+          });
+        } else {
+          // Revoked or invalid — clear local flag and kick out
+          await prefs.setBool('license_activated', false);
+          await prefs.remove('license_key');
+          await prefs.remove('license_business');
+          setState(() {
+            _activated = false;
+            _checking = false;
+          });
+        }
+      } else {
+        // Sheet unreachable — fail open so app works without internet
+        setState(() {
+          _activated = true;
+          _checking = false;
+        });
+      }
+    } on SocketException {
+      // No internet — fail open
+      setState(() {
+        _activated = true;
+        _checking = false;
+      });
+    } catch (e) {
+      // Any other error — fail open
+      setState(() {
+        _activated = true;
+        _checking = false;
+      });
+    }
   }
 
   void _onActivated() {
@@ -271,8 +330,13 @@ class _ActivationScreenState extends State<ActivationScreen> {
                   color: Colors.white.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(24),
                 ),
-                child: const Icon(Icons.local_fire_department,
-                    size: 52, color: Colors.white),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: Image.asset(
+                    'assets/icon/icon.jpeg',
+                    fit: BoxFit.cover,
+                  ),
+                ),
               ),
               const SizedBox(height: 24),
               const Text(
@@ -1036,15 +1100,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
 
-                // ── Footer ──
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    'Developed by Sikandar Ansari',
-                    style: TextStyle(fontSize: 11, color: AppColors.textGrey),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
+
               ],
             ),
       floatingActionButton: FloatingActionButton.extended(
@@ -1105,8 +1161,13 @@ class AppDrawer extends StatelessWidget {
                     color: Colors.white.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: const Icon(Icons.local_fire_department,
-                      size: 32, color: Colors.white),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Image.asset(
+                      'assets/icon/icon.jpeg',
+                      fit: BoxFit.cover,
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 14),
                 const Text(
