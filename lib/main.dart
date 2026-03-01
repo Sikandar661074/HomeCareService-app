@@ -136,7 +136,7 @@ class LicenseGate extends StatefulWidget {
 
 class _LicenseGateState extends State<LicenseGate> {
   static const String _scriptUrl =
-      'URL_HIDDEN_FOR_PRIVACY'; // Replace with your Google Apps Script URL
+      'https://script.google.com/macros/s/AKfycbwB1h4747FDAP1AjwS8S8PMgqlKQHW0wWefoQqplR28LA8LiJjEKIPnlBgyD8MBmOLf0g/exec';
 
   bool _checking = true;
   bool _activated = false;
@@ -333,7 +333,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(24),
                   child: Image.asset(
-                    'assets/icon/icon.jpeg',
+                    'assets/icon/icon.png',
                     fit: BoxFit.cover,
                   ),
                 ),
@@ -1164,7 +1164,7 @@ class AppDrawer extends StatelessWidget {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(14),
                     child: Image.asset(
-                      'assets/icon/icon.jpeg',
+                      'assets/icon/icon.png',
                       fit: BoxFit.cover,
                     ),
                   ),
@@ -1413,13 +1413,39 @@ Future<void> _sendWhatsApp(String phone, String name, String renewalDate) async 
 
 // ─── Upcoming Renewals Screen ─────────────────────────────────────────────────
 
-class UpcomingRenewalsScreen extends StatelessWidget {
+class UpcomingRenewalsScreen extends StatefulWidget {
   final List<Customer> customers;
   const UpcomingRenewalsScreen({super.key, required this.customers});
 
   @override
+  State<UpcomingRenewalsScreen> createState() => _UpcomingRenewalsScreenState();
+}
+
+class _UpcomingRenewalsScreenState extends State<UpcomingRenewalsScreen> {
+  Set<String> _messagedPhones = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMessagedPhones();
+  }
+
+  Future<void> _loadMessagedPhones() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList('messaged_phones') ?? [];
+    setState(() => _messagedPhones = list.toSet());
+  }
+
+  Future<void> _markAsMessaged(String phone) async {
+    final prefs = await SharedPreferences.getInstance();
+    _messagedPhones.add(phone);
+    await prefs.setStringList('messaged_phones', _messagedPhones.toList());
+    setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final sorted = [...customers]
+    final sorted = [...widget.customers]
       ..sort((a, b) => a.renewalDate.compareTo(b.renewalDate));
 
     return Scaffold(
@@ -1434,7 +1460,7 @@ class UpcomingRenewalsScreen extends StatelessWidget {
             const Text('Due This Week',
                 style: TextStyle(fontWeight: FontWeight.bold)),
             Text(
-              '${customers.length} customer${customers.length == 1 ? '' : 's'}',
+              '${widget.customers.length} customer${widget.customers.length == 1 ? '' : 's'}',
               style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
@@ -1452,6 +1478,7 @@ class UpcomingRenewalsScreen extends StatelessWidget {
           final daysLeft = c.renewalDate.difference(DateTime.now()).inDays;
           final renewalStr =
               '${c.renewalDate.day}/${c.renewalDate.month}/${c.renewalDate.year}';
+          final isSent = _messagedPhones.contains(c.phone);
 
           return GestureDetector(
             onTap: () => Navigator.push(
@@ -1546,13 +1573,22 @@ class UpcomingRenewalsScreen extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      onPressed: () =>
-                          _sendWhatsApp(c.phone, c.name, renewalStr),
-                      icon: const Icon(Icons.chat, size: 16),
-                      label: const Text('रिन्यूअल रिमाइंडर भेजें',
-                          style: TextStyle(fontSize: 13)),
+                      onPressed: () async {
+                        await _sendWhatsApp(c.phone, c.name, renewalStr);
+                        await _markAsMessaged(c.phone);
+                      },
+                      icon: Icon(
+                        isSent ? Icons.check_circle : Icons.chat,
+                        size: 16,
+                      ),
+                      label: Text(
+                        isSent ? 'Reminder Sent' : 'Send Reminder',
+                        style: const TextStyle(fontSize: 13),
+                      ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF25D366),
+                        backgroundColor: isSent
+                            ? const Color(0xFF388E3C)
+                            : const Color(0xFF25D366),
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         shape: RoundedRectangleBorder(
