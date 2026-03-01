@@ -5,6 +5,7 @@ import 'package:workmanager/workmanager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -135,7 +136,7 @@ class LicenseGate extends StatefulWidget {
 
 class _LicenseGateState extends State<LicenseGate> {
   static const String _scriptUrl =
-      'YOUR_APPS_SCRIPT_URL_HERE';
+      'Script_url_here'; // TODO: Replace with your actual script URL
 
   bool _checking = true;
   bool _activated = false;
@@ -1327,6 +1328,28 @@ class ContactUsScreen extends StatelessWidget {
   }
 }
 
+// ─── WhatsApp Helper ──────────────────────────────────────────────────────────
+
+Future<void> _sendWhatsApp(String phone, String name, String renewalDate) async {
+  final message = Uri.encodeComponent(
+    'नमस्ते $name जी 🙏\n\n'
+    'आपके गैस सिलेंडर की रिन्यूअल डेट $renewalDate है।\n'
+    'कृपया समय पर रिन्यूअल करवा लें।\n\n'
+    'धन्यवाद 🙏\n- Home Care Service'
+  );
+  final cleaned = phone.replaceAll(RegExp(r'[^\d]'), '');
+  final number = cleaned.startsWith('91') ? cleaned : '91$cleaned';
+
+  final whatsappUrl = Uri.parse('whatsapp://send?phone=$number&text=$message');
+  final fallbackUrl = Uri.parse('https://wa.me/$number?text=$message');
+
+  if (await canLaunchUrl(whatsappUrl)) {
+    await launchUrl(whatsappUrl);
+  } else {
+    await launchUrl(fallbackUrl, mode: LaunchMode.externalApplication);
+  }
+}
+
 // ─── Upcoming Renewals Screen ─────────────────────────────────────────────────
 
 class UpcomingRenewalsScreen extends StatelessWidget {
@@ -1365,8 +1388,10 @@ class UpcomingRenewalsScreen extends StatelessWidget {
         itemCount: sorted.length,
         itemBuilder: (context, i) {
           final c = sorted[i];
-          final daysLeft =
-              c.renewalDate.difference(DateTime.now()).inDays;
+          final daysLeft = c.renewalDate.difference(DateTime.now()).inDays;
+          final renewalStr =
+              '${c.renewalDate.day}/${c.renewalDate.month}/${c.renewalDate.year}';
+
           return GestureDetector(
             onTap: () => Navigator.push(
               context,
@@ -1390,62 +1415,91 @@ class UpcomingRenewalsScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              child: Row(
+              child: Column(
                 children: [
-                  CircleAvatar(
-                    backgroundColor: const Color(0xFFFFF3E0),
-                    child: Text(c.name[0].toUpperCase(),
-                        style: const TextStyle(
-                            color: Color(0xFFF57C00),
-                            fontWeight: FontWeight.bold)),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(c.name,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 15)),
-                        Text(c.phone,
-                            style: const TextStyle(
-                                color: Colors.grey, fontSize: 13)),
-                        if (c.due > 0)
-                          Text('₹${c.due.toStringAsFixed(0)} due',
-                              style: const TextStyle(
-                                  color: Color(0xFF1A237E),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600)),
-                      ],
-                    ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                  Row(
                     children: [
-                      Text(
-                        '${c.renewalDate.day}/${c.renewalDate.month}/${c.renewalDate.year}',
-                        style: const TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFFF57C00),
-                            fontWeight: FontWeight.bold),
+                      CircleAvatar(
+                        backgroundColor: const Color(0xFFFFF3E0),
+                        child: Text(c.name[0].toUpperCase(),
+                            style: const TextStyle(
+                                color: Color(0xFFF57C00),
+                                fontWeight: FontWeight.bold)),
                       ),
-                      const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFF3E0),
-                          borderRadius: BorderRadius.circular(20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(c.name,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 15)),
+                            Text(c.phone,
+                                style: const TextStyle(
+                                    color: Colors.grey, fontSize: 13)),
+                            if (c.due > 0)
+                              Text('₹${c.due.toStringAsFixed(0)} due',
+                                  style: const TextStyle(
+                                      color: Color(0xFF1A237E),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600)),
+                          ],
                         ),
-                        child: Text(
-                          daysLeft <= 0
-                              ? 'Tomorrow'
-                              : 'In $daysLeft day${daysLeft == 1 ? '' : 's'}',
-                          style: const TextStyle(
-                              color: Color(0xFFF57C00), fontSize: 10),
-                        ),
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            renewalStr,
+                            style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFFF57C00),
+                                fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF3E0),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              daysLeft <= 0
+                                  ? 'Tomorrow'
+                                  : 'In $daysLeft day${daysLeft == 1 ? '' : 's'}',
+                              style: const TextStyle(
+                                  color: Color(0xFFF57C00), fontSize: 10),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
+                  ),
+
+                  const SizedBox(height: 12),
+                  const Divider(height: 1),
+                  const SizedBox(height: 8),
+
+                  // ── WhatsApp Button ──
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () =>
+                          _sendWhatsApp(c.phone, c.name, renewalStr),
+                      icon: const Icon(Icons.chat, size: 16),
+                      label: const Text('रिन्यूअल रिमाइंडर भेजें',
+                          style: TextStyle(fontSize: 13)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF25D366),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        elevation: 0,
+                      ),
+                    ),
                   ),
                 ],
               ),
