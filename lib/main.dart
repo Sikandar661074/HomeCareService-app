@@ -598,7 +598,7 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
       }
-    } catch (_) {
+    } catch (e) {
       // Silently fail — update check should never crash the app
     }
   }
@@ -2597,7 +2597,10 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     }
   }
 
+  bool _submitted = false;
+
   void _submit() {
+    setState(() => _submitted = true);
     if (_formKey.currentState!.validate() &&
         _purchaseDate != null &&
         _renewalDate != null) {
@@ -2638,7 +2641,9 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
         padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
-          autovalidateMode: AutovalidateMode.onUserInteraction,
+          autovalidateMode: _submitted
+              ? AutovalidateMode.onUserInteraction
+              : AutovalidateMode.disabled,
           child: Column(
             children: [
               _buildCard([
@@ -2834,16 +2839,30 @@ class _DatePickerTile extends StatelessWidget {
 
 // ─── Balance Due Screen ───────────────────────────────────────────────────────
 
-class BalanceDueScreen extends StatelessWidget {
+class BalanceDueScreen extends StatefulWidget {
   final List<Customer> customers;
   const BalanceDueScreen({super.key, required this.customers});
 
   @override
+  State<BalanceDueScreen> createState() => _BalanceDueScreenState();
+}
+
+class _BalanceDueScreenState extends State<BalanceDueScreen> {
+  String _searchQuery = '';
+
+  @override
   Widget build(BuildContext context) {
-    final sorted = [...customers]
+    final sorted = [...widget.customers]
       ..sort((a, b) => b.due.compareTo(a.due));
 
-    final totalDue = sorted.fold(0.0, (sum, c) => sum + c.due);
+    final filtered = _searchQuery.isEmpty
+        ? sorted
+        : sorted.where((c) =>
+            c.name.toLowerCase().contains(_searchQuery) ||
+            c.phone.toLowerCase().contains(_searchQuery) ||
+            c.consumerNumber.toLowerCase().contains(_searchQuery)).toList();
+
+    final totalDue = filtered.fold(0.0, (sum, c) => sum + c.due);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -2857,7 +2876,7 @@ class BalanceDueScreen extends StatelessWidget {
             const Text('Balance Due',
                 style: TextStyle(fontWeight: FontWeight.bold)),
             Text(
-              '${customers.length} customer${customers.length == 1 ? '' : 's'}',
+              '${filtered.length} customer${filtered.length == 1 ? '' : 's'}',
               style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
@@ -2869,9 +2888,38 @@ class BalanceDueScreen extends StatelessWidget {
       ),
       body: Column(
         children: [
+          // Search bar
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: TextField(
+              onChanged: (v) => setState(() => _searchQuery = v.toLowerCase()),
+              decoration: InputDecoration(
+                hintText: 'Search by name, phone, consumer no.',
+                hintStyle: const TextStyle(color: AppColors.textGrey, fontSize: 14),
+                prefixIcon: const Icon(Icons.search, color: AppColors.navy),
+                filled: true,
+                fillColor: const Color(0xFFE8EAF6),
+                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: BorderSide(
+                      color: AppColors.navy.withOpacity(0.25), width: 1),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: const BorderSide(color: AppColors.navy, width: 1.5),
+                ),
+              ),
+            ),
+          ),
+
           // Summary banner
           Container(
-            margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             decoration: BoxDecoration(
               color: AppColors.navy,
@@ -2901,11 +2949,16 @@ class BalanceDueScreen extends StatelessWidget {
 
           // List
           Expanded(
-            child: ListView.builder(
+            child: filtered.isEmpty
+                ? Center(
+                    child: Text('No results for "$_searchQuery"',
+                        style: const TextStyle(color: AppColors.textGrey)),
+                  )
+                : ListView.builder(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              itemCount: sorted.length,
+              itemCount: filtered.length,
               itemBuilder: (context, i) {
-                final c = sorted[i];
+                final c = filtered[i];
                 return GestureDetector(
                   onTap: () => Navigator.push(
                     context,
