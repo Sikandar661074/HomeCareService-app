@@ -136,7 +136,7 @@ class LicenseGate extends StatefulWidget {
 
 class _LicenseGateState extends State<LicenseGate> {
   static const String _scriptUrl =
-      'https://script.google.com/macros/s/AKfycbwB1h4747FDAP1AjwS8S8PMgqlKQHW0wWefoQqplR28LA8LiJjEKIPnlBgyD8MBmOLf0g/exec';
+      'url here';
 
   bool _checking = true;
   bool _activated = false;
