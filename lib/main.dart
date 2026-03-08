@@ -5,9 +5,9 @@ import 'package:workmanager/workmanager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
 import 'dart:io';
+import 'package:url_launcher/url_launcher.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -90,15 +90,15 @@ void main() async {
 
 // ─── App Colors ───────────────────────────────────────────────────────────────
 class AppColors {
-  static const background    = Color(0xFFEFF6EE);
-  static const primary       = Color(0xFF2E7D32);
-  static const cardGreen     = Color(0xFFD6EDD6);
-  static const cardGreenDark = Color(0xFF7EB97E);
-  static const navy          = Color(0xFF1A237E);
-  static const orange        = Color(0xFFF57C00);
-  static const white         = Colors.white;
-  static const textDark      = Color(0xFF1B1B1B);
-  static const textGrey      = Color(0xFF7A7A7A);
+  static const background   = Color(0xFFEFF6EE); // light green tint
+  static const primary      = Color(0xFF2E7D32); // deep green
+  static const cardGreen    = Color(0xFFD6EDD6); // soft green card bg
+  static const cardGreenDark= Color(0xFF7EB97E); // darker green card (Due This Week)
+  static const navy         = Color(0xFF1A237E); // balance card
+  static const orange       = Color(0xFFF57C00);
+  static const white        = Colors.white;
+  static const textDark     = Color(0xFF1B1B1B);
+  static const textGrey     = Color(0xFF7A7A7A);
 }
 
 class GasCylinderApp extends StatelessWidget {
@@ -136,7 +136,7 @@ class LicenseGate extends StatefulWidget {
 
 class _LicenseGateState extends State<LicenseGate> {
   static const String _scriptUrl =
-      'https://script.google.com/macros/s/AKfycbwB1h4747FDAP1AjwS8S8PMgqlKQHW0wWefoQqplR28LA8LiJjEKIPnlBgyD8MBmOLf0g/exec';
+      'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE';
 
   bool _checking = true;
   bool _activated = false;
@@ -150,69 +150,10 @@ class _LicenseGateState extends State<LicenseGate> {
   Future<void> _checkActivation() async {
     final prefs = await SharedPreferences.getInstance();
     final activated = prefs.getBool('license_activated') ?? false;
-
-    // Not activated locally — show activation screen
-    if (!activated) {
-      setState(() {
-        _activated = false;
-        _checking = false;
-      });
-      return;
-    }
-
-    // Already activated — re-validate against Google Sheet
-    final key = prefs.getString('license_key') ?? '';
-    try {
-      final url =
-          '$_scriptUrl?action=validate&key=${Uri.encodeComponent(key)}';
-
-      final client = HttpClient();
-      client.connectionTimeout = const Duration(seconds: 10);
-      final request = await client.getUrl(Uri.parse(url));
-      request.followRedirects = true;
-      request.maxRedirects = 10;
-      final response = await request.close();
-      final responseBody = await response.transform(utf8.decoder).join();
-      client.close();
-
-      if (response.statusCode == 200) {
-        final body = jsonDecode(responseBody);
-        if (body['valid'] == true) {
-          // Still valid — let them in
-          setState(() {
-            _activated = true;
-            _checking = false;
-          });
-        } else {
-          // Revoked or invalid — clear local flag and kick out
-          await prefs.setBool('license_activated', false);
-          await prefs.remove('license_key');
-          await prefs.remove('license_business');
-          setState(() {
-            _activated = false;
-            _checking = false;
-          });
-        }
-      } else {
-        // Sheet unreachable — fail open so app works without internet
-        setState(() {
-          _activated = true;
-          _checking = false;
-        });
-      }
-    } on SocketException {
-      // No internet — fail open
-      setState(() {
-        _activated = true;
-        _checking = false;
-      });
-    } catch (e) {
-      // Any other error — fail open
-      setState(() {
-        _activated = true;
-        _checking = false;
-      });
-    }
+    setState(() {
+      _activated = activated;
+      _checking = false;
+    });
   }
 
   void _onActivated() {
@@ -274,6 +215,7 @@ class _ActivationScreenState extends State<ActivationScreen> {
       final url =
           '${widget.scriptUrl}?action=validate&key=${Uri.encodeComponent(key)}';
 
+      // Use HttpClient so it follows Google's redirects automatically
       final client = HttpClient();
       client.connectionTimeout = const Duration(seconds: 15);
 
@@ -330,13 +272,8 @@ class _ActivationScreenState extends State<ActivationScreen> {
                   color: Colors.white.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(24),
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
-                  child: Image.asset(
-                    'assets/icon/icon.png',
-                    fit: BoxFit.cover,
-                  ),
-                ),
+                child: const Icon(Icons.local_fire_department,
+                    size: 52, color: Colors.white),
               ),
               const SizedBox(height: 24),
               const Text(
@@ -504,18 +441,25 @@ class Customer {
 }
 
 DateTime _parseDate(String raw) {
-  // Handle both dd/mm/yyyy and dd-mm-yyyy formats
-  final normalized = raw.trim().replaceAll('-', '/');
-  final parts = normalized.split('/');
+  final parts = raw.trim().split('/');
   return DateTime(
-    int.parse(parts[2].trim()),
-    int.parse(parts[1].trim()),
-    int.parse(parts[0].trim()),
+    int.parse(parts[2]),
+    int.parse(parts[1]),
+    int.parse(parts[0]),
   );
 }
 
 String _formatDate(DateTime d) =>
     '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+
+// ─── Call Helper ──────────────────────────────────────────────────────────────
+
+Future<void> _makeCall(String phone) async {
+  final uri = Uri(scheme: 'tel', path: phone);
+  if (await canLaunchUrl(uri)) {
+    await launchUrl(uri);
+  }
+}
 
 // ─── Filter Model ─────────────────────────────────────────────────────────────
 
@@ -590,7 +534,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(body);
-        if (data['updateAvailable'] == true && mounted) {
+        // Only show update dialog if version field is non-empty
+        if (data['updateAvailable'] == true &&
+            data['version'] != null &&
+            data['version'].toString().trim().isNotEmpty &&
+            mounted) {
           _showUpdateDialog(
             data['version'] ?? '',
             data['apkUrl'] ?? '',
@@ -781,14 +729,12 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
       final startIndex =
-          rows[0][0].toString().toLowerCase().trim().contains('name') ? 1 : 0;
+          rows[0][0].toString().toLowerCase().contains('name') ? 1 : 0;
       int imported = 0;
       int failed = 0;
       for (int i = startIndex; i < rows.length; i++) {
         try {
           final row = rows[i];
-          // Skip empty rows
-          if (row.isEmpty || row[0].toString().trim().isEmpty) continue;
           if (row.length < 6) continue;
           final customer = Customer(
             name: row[0].toString().trim(),
@@ -845,6 +791,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     try {
+      // Build CSV string
       final buffer = StringBuffer();
 
       // Header row
@@ -852,22 +799,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // Data rows
       for (final c in _customers) {
-        // Wrap text fields in quotes
-        String escapeText(String s) => '"${s.replaceAll('"', '""')}"';
-        // Force Excel to treat numbers as text using ="value" format
-        String forceText(String s) => '="$s"';
-
+        // Wrap fields in quotes to handle commas inside address
+        String escape(String s) => '"${s.replaceAll('"', '""')}"';
         buffer.writeln(
-          '${escapeText(c.name)},'
-          '${forceText(c.consumerNumber)},'
-          '${escapeText(c.address)},'
-          '${forceText(c.phone)},'
+          '${escape(c.name)},'
+          '${escape(c.consumerNumber)},'
+          '${escape(c.address)},'
+          '${escape(c.phone)},'
           '${_formatDate(c.purchaseDate)},'
           '${_formatDate(c.renewalDate)},'
           '${c.due.toStringAsFixed(2)}',
         );
       }
 
+      // Save to Downloads folder
       Directory? dir;
       if (Platform.isAndroid) {
         dir = Directory('/storage/emulated/0/Download');
@@ -883,7 +828,7 @@ class _HomeScreenState extends State<HomeScreen> {
           'customers_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}.csv';
 
       final file = File('${dir!.path}/$fileName');
-      await file.writeAsString(buffer.toString(), encoding: utf8);
+      await file.writeAsString(buffer.toString());
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1095,21 +1040,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(height: 12),
 
                         // ── Balance Card ──
-                        _BalanceCard(
-                          totalDue: _totalDue,
-                          onTap: _totalDue > 0
-                              ? () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => BalanceDueScreen(
-                                        customers: _customers
-                                            .where((c) => c.due > 0)
-                                            .toList(),
-                                      ),
-                                    ),
-                                  )
-                              : null,
-                        ),
+                        _BalanceCard(totalDue: _totalDue),
 
                         const SizedBox(height: 24),
 
@@ -1134,7 +1065,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     context,
                                     MaterialPageRoute(
                                       builder: (_) =>
-                                          AddCustomerScreen(existing: c, allCustomers: _customers),
+                                          AddCustomerScreen(existing: c),
                                     ),
                                   );
                                   if (updated != null) {
@@ -1190,7 +1121,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         context,
                                         MaterialPageRoute(
                                           builder: (_) => AddCustomerScreen(
-                                              existing: filtered[i], allCustomers: _customers),
+                                              existing: filtered[i]),
                                         ),
                                       );
                                       if (updated != null) {
@@ -1210,20 +1141,28 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               ),
 
-                        const SizedBox(height: 80),
+                        const SizedBox(height: 80), // space for FAB
                       ],
                     ),
                   ),
                 ),
 
-
+                // ── Footer ──
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    'Developed by Sikandar Ansari',
+                    style: TextStyle(fontSize: 11, color: AppColors.textGrey),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
               ],
             ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           final customer = await Navigator.push<Customer>(
             context,
-            MaterialPageRoute(builder: (_) => AddCustomerScreen(allCustomers: _customers)),
+            MaterialPageRoute(builder: (_) => const AddCustomerScreen()),
           );
           if (customer != null) _addCustomer(customer);
         },
@@ -1261,6 +1200,7 @@ class AppDrawer extends StatelessWidget {
       backgroundColor: Colors.white,
       child: Column(
         children: [
+          // Header
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(20, 56, 20, 24),
@@ -1277,13 +1217,8 @@ class AppDrawer extends StatelessWidget {
                     color: Colors.white.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: Image.asset(
-                      'assets/icon/icon.png',
-                      fit: BoxFit.cover,
-                    ),
-                  ),
+                  child: const Icon(Icons.local_fire_department,
+                      size: 32, color: Colors.white),
                 ),
                 const SizedBox(height: 14),
                 const Text(
@@ -1305,6 +1240,7 @@ class AppDrawer extends StatelessWidget {
 
           const SizedBox(height: 8),
 
+          // Home
           _drawerItem(
             icon: Icons.home_outlined,
             label: 'Home',
@@ -1316,6 +1252,7 @@ class AppDrawer extends StatelessWidget {
             child: Divider(),
           ),
 
+          // Section label
           const Padding(
             padding: EdgeInsets.only(left: 16, top: 4, bottom: 4),
             child: Align(
@@ -1332,6 +1269,7 @@ class AppDrawer extends StatelessWidget {
             ),
           ),
 
+          // Import CSV
           _drawerItem(
             icon: Icons.upload_file_outlined,
             label: 'Import CSV',
@@ -1339,6 +1277,7 @@ class AppDrawer extends StatelessWidget {
             onTap: onImportCSV,
           ),
 
+          // Export CSV
           _drawerItem(
             icon: Icons.download_outlined,
             label: 'Export CSV',
@@ -1351,6 +1290,7 @@ class AppDrawer extends StatelessWidget {
             child: Divider(),
           ),
 
+          // Contact Us
           _drawerItem(
             icon: Icons.contact_support_outlined,
             label: 'Contact Us',
@@ -1365,6 +1305,7 @@ class AppDrawer extends StatelessWidget {
 
           const Spacer(),
 
+          // Footer
           const Padding(
             padding: EdgeInsets.only(bottom: 20),
             child: Text(
@@ -2131,60 +2072,54 @@ class _StatCard extends StatelessWidget {
 
 class _BalanceCard extends StatelessWidget {
   final double totalDue;
-  final VoidCallback? onTap;
-
-  const _BalanceCard({required this.totalDue, this.onTap});
+  const _BalanceCard({required this.totalDue});
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-        decoration: BoxDecoration(
-          color: AppColors.navy,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.account_balance_wallet_outlined,
-                color: Colors.white, size: 30),
-            const SizedBox(width: 14),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Total Balance Due',
-                    style: TextStyle(fontSize: 12, color: Colors.white70)),
-                const SizedBox(height: 4),
-                Text('₹${totalDue.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white)),
-              ],
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      decoration: BoxDecoration(
+        color: AppColors.navy,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.account_balance_wallet_outlined,
+              color: Colors.white, size: 30),
+          const SizedBox(width: 14),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Total Balance Due',
+                  style: TextStyle(fontSize: 12, color: Colors.white70)),
+              const SizedBox(height: 4),
+              Text('₹${totalDue.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white)),
+            ],
+          ),
+          const Spacer(),
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.cardGreenDark.withOpacity(0.45),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                  color: Colors.white.withOpacity(0.2), width: 1),
             ),
-            const Spacer(),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: totalDue > 0
-                    ? AppColors.cardGreenDark.withOpacity(0.45)
-                    : Colors.white.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                    color: Colors.white.withOpacity(0.2), width: 1),
-              ),
-              child: Text(
-                totalDue > 0 ? 'Review All' : 'All Clear',
-                style: TextStyle(
-                    color: totalDue > 0 ? Colors.white : Colors.white54,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600),
-              ),
+            child: Text(
+              totalDue > 0 ? 'Review All' : 'All Clear',
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -2346,7 +2281,7 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            "Get started by tapping the Add Client button.",
+            "You haven't added any clients yet.\nGet started by tapping the Add Client button.",
             style: TextStyle(fontSize: 13, color: AppColors.textGrey),
             textAlign: TextAlign.center,
           ),
@@ -2416,6 +2351,31 @@ class CustomerDetailScreen extends StatelessWidget {
                       style: TextStyle(
                           fontSize: 14,
                           color: Colors.white.withOpacity(0.8))),
+                  const SizedBox(height: 12),
+                  GestureDetector(
+                    onTap: () => _makeCall(customer.phone),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.call,
+                              color: AppColors.primary, size: 16),
+                          const SizedBox(width: 6),
+                          Text('Call',
+                              style: TextStyle(
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                  ),
                   if (isDueToday) ...[
                     const SizedBox(height: 12),
                     Container(
@@ -2540,8 +2500,7 @@ class _DetailTile extends StatelessWidget {
 
 class AddCustomerScreen extends StatefulWidget {
   final Customer? existing;
-  final List<Customer> allCustomers;
-  const AddCustomerScreen({super.key, this.existing, required this.allCustomers});
+  const AddCustomerScreen({super.key, this.existing});
 
   @override
   State<AddCustomerScreen> createState() => _AddCustomerScreenState();
@@ -2597,10 +2556,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     }
   }
 
-  bool _submitted = false;
-
   void _submit() {
-    setState(() => _submitted = true);
     if (_formKey.currentState!.validate() &&
         _purchaseDate != null &&
         _renewalDate != null) {
@@ -2641,14 +2597,12 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
         padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
-          autovalidateMode: _submitted
-              ? AutovalidateMode.onUserInteraction
-              : AutovalidateMode.disabled,
           child: Column(
             children: [
               _buildCard([
                 _buildField(_nameController, 'Customer Name', Icons.person),
-                _buildConsumerNumberField(),
+                _buildField(_consumerNumberController, 'Consumer Number',
+                    Icons.numbers),
                 _buildPhoneField(),
                 _buildField(_addressController, 'Address', Icons.location_on,
                     maxLines: 2),
@@ -2711,31 +2665,6 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     );
   }
 
-  Widget _buildConsumerNumberField() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: TextFormField(
-        controller: _consumerNumberController,
-        decoration: const InputDecoration(
-          labelText: 'Consumer Number',
-          prefixIcon: Icon(Icons.numbers, color: AppColors.primary),
-          border: InputBorder.none,
-        ),
-        validator: (v) {
-          if (v == null || v.trim().isEmpty) return 'Consumer number is required';
-          // Check for duplicates — skip if editing same customer
-          final isDuplicate = widget.allCustomers.any((c) =>
-              c.consumerNumber.toLowerCase() == v.trim().toLowerCase() &&
-              c.consumerNumber != widget.existing?.consumerNumber);
-          if (isDuplicate) {
-            return '⚠️ Consumer number already exists';
-          }
-          return null;
-        },
-      ),
-    );
-  }
-
   Widget _buildPhoneField() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -2743,6 +2672,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
         controller: _phoneController,
         keyboardType: TextInputType.phone,
         maxLength: 10,
+        autovalidateMode: AutovalidateMode.onUserInteraction,
         decoration: const InputDecoration(
           labelText: 'Phone Number',
           prefixIcon: Icon(Icons.phone, color: AppColors.primary),
@@ -2833,215 +2763,6 @@ class _DatePickerTile extends StatelessWidget {
             color: date != null ? const Color(0xFF2E7D32) : Colors.grey),
       ),
       onTap: onTap,
-    );
-  }
-}
-
-// ─── Balance Due Screen ───────────────────────────────────────────────────────
-
-class BalanceDueScreen extends StatefulWidget {
-  final List<Customer> customers;
-  const BalanceDueScreen({super.key, required this.customers});
-
-  @override
-  State<BalanceDueScreen> createState() => _BalanceDueScreenState();
-}
-
-class _BalanceDueScreenState extends State<BalanceDueScreen> {
-  String _searchQuery = '';
-
-  @override
-  Widget build(BuildContext context) {
-    final sorted = [...widget.customers]
-      ..sort((a, b) => b.due.compareTo(a.due));
-
-    final filtered = _searchQuery.isEmpty
-        ? sorted
-        : sorted.where((c) =>
-            c.name.toLowerCase().contains(_searchQuery) ||
-            c.phone.toLowerCase().contains(_searchQuery) ||
-            c.consumerNumber.toLowerCase().contains(_searchQuery)).toList();
-
-    final totalDue = filtered.fold(0.0, (sum, c) => sum + c.due);
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        scrolledUnderElevation: 1,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Balance Due',
-                style: TextStyle(fontWeight: FontWeight.bold)),
-            Text(
-              '${filtered.length} customer${filtered.length == 1 ? '' : 's'}',
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: Column(
-        children: [
-          // Search bar
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: TextField(
-              onChanged: (v) => setState(() => _searchQuery = v.toLowerCase()),
-              decoration: InputDecoration(
-                hintText: 'Search by name, phone, consumer no.',
-                hintStyle: const TextStyle(color: AppColors.textGrey, fontSize: 14),
-                prefixIcon: const Icon(Icons.search, color: AppColors.navy),
-                filled: true,
-                fillColor: const Color(0xFFE8EAF6),
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(30),
-                  borderSide: BorderSide.none,
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(30),
-                  borderSide: BorderSide(
-                      color: AppColors.navy.withOpacity(0.25), width: 1),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(30),
-                  borderSide: const BorderSide(color: AppColors.navy, width: 1.5),
-                ),
-              ),
-            ),
-          ),
-
-          // Summary banner
-          Container(
-            margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            decoration: BoxDecoration(
-              color: AppColors.navy,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.account_balance_wallet_outlined,
-                    color: Colors.white, size: 26),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Total Outstanding',
-                        style: TextStyle(fontSize: 12, color: Colors.white70)),
-                    const SizedBox(height: 2),
-                    Text('₹${totalDue.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          // List
-          Expanded(
-            child: filtered.isEmpty
-                ? Center(
-                    child: Text('No results for "$_searchQuery"',
-                        style: const TextStyle(color: AppColors.textGrey)),
-                  )
-                : ListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              itemCount: filtered.length,
-              itemBuilder: (context, i) {
-                final c = filtered[i];
-                return GestureDetector(
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => CustomerDetailScreen(customer: c)),
-                  ),
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.04),
-                          blurRadius: 10,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          backgroundColor: const Color(0xFFE8EAF6),
-                          child: Text(c.name[0].toUpperCase(),
-                              style: const TextStyle(
-                                  color: AppColors.navy,
-                                  fontWeight: FontWeight.bold)),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(c.name,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 15)),
-                              const SizedBox(height: 2),
-                              Text(c.phone,
-                                  style: const TextStyle(
-                                      color: Colors.grey, fontSize: 13)),
-                              Text(c.consumerNumber,
-                                  style: const TextStyle(
-                                      color: Colors.grey, fontSize: 12)),
-                            ],
-                          ),
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              '₹${c.due.toStringAsFixed(0)}',
-                              style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.navy),
-                            ),
-                            const SizedBox(height: 4),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE8EAF6),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: const Text('Due',
-                                  style: TextStyle(
-                                      color: AppColors.navy,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600)),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
